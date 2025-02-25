@@ -2,3 +2,4 @@ sqlalchemy
 ipdb
 pymysql
 psycopg2
+pytest
