@@ -109,3 +109,113 @@ def test_2_sailors_who_have_reserved_every_red_boat(raw_db, test_db):
         print(row)
 
     assert orm_results == raw_results, "ORM and raw SQL results do not match!"
+
+def test_3_sailors_reserve_only_red_boats(raw_db, test_db):
+    """
+    List those sailors who have reserved only red boats
+    """
+    raw_sql = text("""
+    SELECT s.sid, s.sname
+    FROM sailors s
+    WHERE EXISTS (
+        SELECT 1 FROM reserves r WHERE r.sid = s.sid
+    )
+    AND NOT EXISTS (
+        SELECT r.bid
+        FROM reserves r
+        JOIN boats b ON r.bid = b.bid
+        WHERE r.sid = s.sid AND b.color <> 'red'
+    );
+    """)
+
+    pass
+
+
+
+def test_4_boat_with_most_reservations(raw_db, test_db):
+    """For which boat are there the most reservations?"""
+    raw_sql = text("""
+    WITH boat_reservations AS (
+        SELECT boats.bname, reserves.bid, COUNT(*) AS reservation_count
+        FROM reserves
+        JOIN boats ON reserves.bid = boats.bid
+        GROUP BY reserves.bid, boats.bname
+        ORDER BY reservation_count
+    )
+    SELECT * FROM boat_reservations b
+    WHERE b.reservation_count = (SELECT MAX(reservation_count) FROM boat_reservations);
+    """)
+
+    pass
+    
+
+def test_5_sailors_never_reserve_red_boat(raw_db, test_db):
+    """
+    Select all sailors who have never reserved a red boat
+    """
+    raw_sql = text("""
+    SELECT s.sid, s.sname
+    FROM sailors s
+    WHERE NOT EXISTS (
+        SELECT r.bid
+        FROM reserves r
+        JOIN boats b ON r.bid = b.bid
+        WHERE r.sid = s.sid AND b.color = 'red'
+    );
+    """)
+
+    pass
+
+def test_6_avg_age_sailors_rating_10(raw_db, test_db):
+    """
+    Find the average age of sailors with a rating of 10
+    """
+    raw_sql = text("""
+    WITH rating_10 AS (
+        SELECT s.sid, s.rating, s.age
+        FROM sailors s
+        WHERE s.rating = 10
+    )
+    SELECT AVG(age) AS average_age FROM rating_10;
+    """)
+
+    pass
+
+def test_7_youngest_sailor_for_each_rating(raw_db, test_db):
+    """
+    For each rating find the name and the id of the youngest sailor
+    Using query 7e to get only one sailor if two sailors have the youngest age. 
+    """
+    raw_sql = text("""
+    SELECT DISTINCT ON (s.rating) s.rating, s.sid, s.sname, s.age
+    FROM sailors s
+    WHERE s.age = (
+        SELECT MIN(s2.age)
+        FROM sailors s2
+        WHERE s2.rating = s.rating
+    )
+    ORDER BY s.rating DESC;
+    """)
+
+    pass
+
+def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
+    """
+    Select, for each boat, the sailor that made the highest number of reservations on that boat
+    """
+    raw_sql = text("""
+    WITH reservation_counts AS (
+        SELECT r.bid, r.sid, COUNT(*) AS reservation_count,
+               RANK() OVER (PARTITION BY r.bid ORDER BY COUNT(*) DESC, r.sid ASC) AS rank
+        FROM reserves r
+        GROUP BY r.bid, r.sid
+    )
+    SELECT rc.bid, rc.sid, s.sname, rc.reservation_count
+    FROM reservation_counts rc
+    JOIN sailors s ON rc.sid = s.sid
+    WHERE rc.rank = 1
+    ORDER BY rc.bid;
+    """)
+    pass
+
+
