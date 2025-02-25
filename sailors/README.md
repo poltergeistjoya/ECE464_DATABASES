@@ -32,3 +32,15 @@ in psql shell
 ```
     \dt
 ```
+
+6. Run SQL queries to your heart's desire 
+
+
+## Part 2 SQLAlchemy
+1. Change `DATABASE_URL` as needed. Make sure `DATABASE` has already been created. 
+```DATABASE_URL = "postgresql+psycopg2://<USERNAME>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>"```
+
+2. 
+```bash
+python create_sailors.py
+```
