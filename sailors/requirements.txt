@@ -3,3 +3,4 @@ ipdb
 pymysql
 psycopg2
 pytest
+pytest-asyncio

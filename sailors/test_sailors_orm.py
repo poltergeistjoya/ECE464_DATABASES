@@ -128,8 +128,32 @@ def test_3_sailors_reserve_only_red_boats(raw_db, test_db):
     );
     """)
 
-    pass
+    raw_results = raw_db.execute(raw_sql).fetchall()
 
+
+    sailor_has_1_reserve = select(Reserve).filter(Reserve.sid == Sailor.sid)
+
+    sailor_has_non_red_reserve = select(Reserve.bid).join(Boat).filter(Reserve.sid == Sailor.sid, Boat.color != 'red')
+
+    orm_results = (
+        test_db.query(Sailor.sid, Sailor.sname)
+        .filter(sailor_has_1_reserve.exists())
+        .filter(~sailor_has_non_red_reserve.exists())
+        .all()
+    )
+
+    raw_results = [(row[0], row[1].strip()) for row in raw_results] #strip empty space in sname 
+    orm_results = [(row[0], row[1]) for row in orm_results]
+
+    print("\nORM Results:")
+    for row in orm_results:
+        print(row)
+
+    print("\nRaw SQL Results:")
+    for row in raw_results:
+        print(row)
+
+    assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 
 def test_4_boat_with_most_reservations(raw_db, test_db):
@@ -146,7 +170,37 @@ def test_4_boat_with_most_reservations(raw_db, test_db):
     WHERE b.reservation_count = (SELECT MAX(reservation_count) FROM boat_reservations);
     """)
 
-    pass
+    raw_results = raw_db.execute(raw_sql).fetchall()
+
+    boat_reservations = (select(Boat.bname, Reserve.bid, func.count(Reserve.sid).label("reservation_count"))
+    .join(Boat, Reserve.bid ==  Boat.bid)
+    .group_by(Reserve.bid, Boat.bname)
+    .order_by(func.count(Reserve.sid))
+    ).subquery()
+
+    max_reservation = select(func.max(boat_reservations.c.reservation_count)).scalar_subquery()
+
+    top_boat = (
+        test_db.query(boat_reservations.c.bname, boat_reservations.c.bid, boat_reservations.c.reservation_count)
+        .filter(boat_reservations.c.reservation_count == max_reservation)
+        .all()
+    )
+
+    # Convert results to tuples for direct comparison
+    raw_results = [(row[0].strip(), row[1], row[2]) for row in raw_results]
+    orm_results = [(row[0], row[1], row[2]) for row in top_boat]
+
+    # Print for debugging
+    print("\nORM Results:")
+    for row in orm_results:
+        print(row)
+
+    print("\nRaw SQL Results:")
+    for row in raw_results:
+        print(row)
+
+    # Ensure both results match
+    assert orm_results == raw_results, "ORM and raw SQL results do not match!"
     
 
 def test_5_sailors_never_reserve_red_boat(raw_db, test_db):
@@ -164,7 +218,24 @@ def test_5_sailors_never_reserve_red_boat(raw_db, test_db):
     );
     """)
 
-    pass
+    raw_results = raw_db.execute(raw_sql).fetchall()
+
+    red_boats_reserved_by_sailor = select(Reserve.bid).join(Boat, Reserve.bid == Boat.bid).filter(Reserve.sid == Sailor.sid).filter(Boat.color == 'red')
+
+    orm_results = test_db.query(Sailor.sid, Sailor.sname).filter(~(red_boats_reserved_by_sailor).exists()).all()
+
+    raw_results = [(row[0], row[1].strip()) for row in raw_results] #strip empty space in sname 
+    orm_results = [(row[0], row[1]) for row in orm_results]
+
+    print("\nORM Results:")
+    for row in orm_results:
+        print(row)
+
+    print("\nRaw SQL Results:")
+    for row in raw_results:
+        print(row)
+
+    assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 def test_6_avg_age_sailors_rating_10(raw_db, test_db):
     """
@@ -178,6 +249,13 @@ def test_6_avg_age_sailors_rating_10(raw_db, test_db):
     )
     SELECT AVG(age) AS average_age FROM rating_10;
     """)
+
+    boat_reservations = (select(Boat.bname, Reserve.bid, func.count(Reserve.sid).label("reservation_count"))
+    .join(Boat, Reserve.bid ==  Boat.bid)
+    .group_by(Reserve.bid, Boat.bname)
+    .order_by(func.count(Reserve.sid))
+    ).subquery()
+
 
     pass
 
@@ -196,8 +274,39 @@ def test_7_youngest_sailor_for_each_rating(raw_db, test_db):
     )
     ORDER BY s.rating DESC;
     """)
+    raw_results = raw_db.execute(raw_sql).fetchall()
 
-    pass
+    min_age_by_rating = (select(Sailor.rating, func.min(Sailor.age).label("min_age"))
+               .group_by(Sailor.rating)
+               .subquery()
+    )
+
+    orm_results = (
+        test_db.query(Sailor.rating, Sailor.sid, Sailor.sname, Sailor.age)
+        .join(min_age_by_rating,
+              (Sailor.rating == min_age_by_rating.c.rating) & 
+              (Sailor.age == min_age_by_rating.c.min_age)
+        )
+        .distinct(Sailor.rating)
+        .order_by(Sailor.rating.desc())
+        .all()
+    )
+
+    # Convert results to tuples for direct comparison
+    raw_results = [(row[0], row[1], row[2].strip(), row[3]) for row in raw_results]
+    orm_results = [(row[0], row[1], row[2], row[3]) for row in orm_results]
+
+    # Print for debugging
+    print("\nORM Results:")
+    for row in orm_results:
+        print(row)
+
+    print("\nRaw SQL Results:")
+    for row in raw_results:
+        print(row)
+
+    # Ensure both results match
+    assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
     """
@@ -216,6 +325,49 @@ def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
     WHERE rc.rank = 1
     ORDER BY rc.bid;
     """)
-    pass
+
+    raw_results = raw_db.execute(raw_sql).fetchall()
+
+    reservation_counts_by_boat = (
+        select(
+            Reserve.bid, 
+            Reserve.sid, 
+            func.count().label("reservation_count"),
+            func.rank().over(
+                partition_by=Reserve.bid, order_by=[func.count().desc(), Reserve.sid.asc()]
+            ).label("rank")
+        )
+        .group_by(Reserve.bid, Reserve.sid)
+        .subquery()
+    )
+
+    orm_results = (
+        test_db.query(
+            reservation_counts_by_boat.c.bid, 
+            reservation_counts_by_boat.c.sid, 
+            Sailor.sname,
+            reservation_counts_by_boat.c.reservation_count
+        )
+        .join(Sailor, reservation_counts_by_boat.c.sid == Sailor.sid)
+        .filter(reservation_counts_by_boat.c.rank==1)
+        .order_by(reservation_counts_by_boat.c.bid)
+        .all()
+    )
+
+    # Convert results to tuples for direct comparison
+    raw_results = [(row[0], row[1], row[2].strip(), row[3]) for row in raw_results]
+    orm_results = [(row[0], row[1], row[2], row[3]) for row in orm_results]
+
+    # Print for debugging
+    print("\nORM Results:")
+    for row in orm_results:
+        print(row)
+
+    print("\nRaw SQL Results:")
+    for row in raw_results:
+        print(row)
+
+    # Ensure both results match
+    assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 
