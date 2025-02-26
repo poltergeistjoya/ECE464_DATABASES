@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import func, text, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from create_sailors_orm import Base, Sailor, Boat, Reserve, engine as orm_engine
+from sailors.orm.create_sailors_orm import Base, Sailor, Boat, Reserve, engine as orm_engine
 from datetime import date
 
 # Connect to the original `sailors_db` populated by sailors-mysql.sql

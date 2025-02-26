@@ -1,7 +1,12 @@
 import pytest
 from sqlalchemy import func, create_engine, text, select, not_, exists
 from sqlalchemy.orm import sessionmaker
-from create_sailors_orm import Base, Sailor, Boat, Reserve, engine as orm_engine
+from orm_part2.create_sailors_orm import (
+    Sailor, 
+    Boat, 
+    Reserve, 
+    engine as orm_engine, 
+    )
 from datetime import date
 
 # Connect to the original `sailors_db` populated by sailors-mysql.sql
