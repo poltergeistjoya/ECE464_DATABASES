@@ -250,14 +250,23 @@ def test_6_avg_age_sailors_rating_10(raw_db, test_db):
     SELECT AVG(age) AS average_age FROM rating_10;
     """)
 
-    boat_reservations = (select(Boat.bname, Reserve.bid, func.count(Reserve.sid).label("reservation_count"))
-    .join(Boat, Reserve.bid ==  Boat.bid)
-    .group_by(Reserve.bid, Boat.bname)
-    .order_by(func.count(Reserve.sid))
-    ).subquery()
+    raw_results = raw_db.execute(raw_sql).fetchall()
 
+    orm_results = (
+        test_db.query(func.avg(Sailor.age))
+        .filter(Sailor.rating == 10)
+        .scalar()
+    )
 
-    pass
+    raw_avg_age = raw_results[0][0]  # Extract scalar value
+    orm_avg_age = orm_results 
+
+    print("\nORM Result:", orm_avg_age)
+    print("Raw SQL Result:", raw_avg_age)
+
+    # Ensure both results match
+    assert orm_avg_age == raw_avg_age, "ORM and raw SQL results do not match!"
+
 
 def test_7_youngest_sailor_for_each_rating(raw_db, test_db):
     """
@@ -292,11 +301,9 @@ def test_7_youngest_sailor_for_each_rating(raw_db, test_db):
         .all()
     )
 
-    # Convert results to tuples for direct comparison
     raw_results = [(row[0], row[1], row[2].strip(), row[3]) for row in raw_results]
     orm_results = [(row[0], row[1], row[2], row[3]) for row in orm_results]
 
-    # Print for debugging
     print("\nORM Results:")
     for row in orm_results:
         print(row)
@@ -305,7 +312,6 @@ def test_7_youngest_sailor_for_each_rating(raw_db, test_db):
     for row in raw_results:
         print(row)
 
-    # Ensure both results match
     assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
@@ -354,11 +360,9 @@ def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
         .all()
     )
 
-    # Convert results to tuples for direct comparison
     raw_results = [(row[0], row[1], row[2].strip(), row[3]) for row in raw_results]
     orm_results = [(row[0], row[1], row[2], row[3]) for row in orm_results]
 
-    # Print for debugging
     print("\nORM Results:")
     for row in orm_results:
         print(row)
@@ -367,7 +371,6 @@ def test_8_sailor_with_highest_res_per_boat(raw_db, test_db):
     for row in raw_results:
         print(row)
 
-    # Ensure both results match
     assert orm_results == raw_results, "ORM and raw SQL results do not match!"
 
 
