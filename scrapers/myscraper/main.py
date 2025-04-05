@@ -6,6 +6,8 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import structlog
+import pandas as pd
+from pathlib import Path
 
 logger = structlog.get_logger()
 
@@ -17,6 +19,7 @@ driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), opti
 
 # go to Page 1
 BASE_URL = "https://catalog.data.gov/dataset?page=1"
+logger.info(f"BASE_URL: {BASE_URL}")
 driver.get(BASE_URL)
 # time.sleep(2)
 
@@ -52,11 +55,11 @@ for url in dataset_links:
     organization_type = safe_get("span.organization-type")
     formats = safe_get_all("li.resource-item")
     topics = safe_get_all("ul.tag-list li a")
-    publisher = safe_get("a[title='Publisher']")
+    publisher = safe_get("[title='publisher']")
     
     results.append({
         "title": title, 
-        "description": description, 
+        # "description": description, 
         "organization_type": organization_type,
         "formats": formats, 
         "topics": topics, 
@@ -69,4 +72,9 @@ driver.quit()
 from pprint import pprint
 pprint(results)
 
+df = pd.DataFrame(results)
+filepath = Path('out.csv')
+
+# Write the DataFrame to the CSV file
+df.to_csv(filepath, index=False)
 
