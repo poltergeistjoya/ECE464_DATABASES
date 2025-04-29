@@ -5,9 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "marimo>=0.13.2",
     "pandas>=2.2.3",
     "psutil>=7.0.0",
+    "psycopg2-binary>=2.9.10",
+    "seaborn>=0.13.2",
     "selenium>=4.30.0",
+    "sqlalchemy>=2.0.40",
     "stay-awake>=0.3",
     "structlog>=25.2.0",
     "webdriver-manager>=4.0.2",

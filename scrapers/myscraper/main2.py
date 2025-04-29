@@ -6,6 +6,8 @@ import structlog
 from pathlib import Path
 from multiprocessing import Pool
 from selenium import webdriver
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -41,8 +43,7 @@ def safe_driver_get(driver, url, max_retries=3, sleep_sec=5):
             msg = str(e).lower()
             if "invalid session id" in msg or "session deleted" in msg:
                 logger.warning("Main driver session lost — restarting", attempt=attempt + 1, url=url)
-                driver.quit()
-                driver = setup_driver()
+                driver = restart_driver(driver)
             else:
                 logger.warning("Page load error", attempt=attempt + 1, error=msg)
             time.sleep(sleep_sec)
@@ -82,7 +83,7 @@ def scrape_dataset_page_url(link, max_retries=3):
                 "tags": safe_get_all(driver, "ul.tag-list li a", link),
                 "publisher_heading": safe_get(driver, "section#organization-info h1.heading", link),
                 "publisher": safe_get(driver, "[title='publisher']", link),
-                "date_created": safe_get(driver, "span[itemprop='dateModified'] a", link),
+                # "date_created": safe_get(driver, "span[itemprop='dateModified'] a", link),
                 "date_last_updated": get_text_by_label_xpath(driver, "Metadata Updated Date"),
                 "url": link,
             }
@@ -113,6 +114,7 @@ def main():
 
     page_number = 1
     empty_page_streak = 0
+    empty_page_retry = 0
 
     scraped_urls = set()
     if output_path.exists():
@@ -122,7 +124,7 @@ def main():
     while empty_page_streak < MAX_EMPTY_PAGES:
         if get_memory_usage_mb() > MEMORY_LIMIT_MB:
             logger.info("Restarting browser due to high memory")
-            driver = restart_driver()
+            driver = restart_driver(driver)
 
         url = f"https://catalog.data.gov/dataset?page={page_number}"
         logger.info("Scraping page", page_number=page_number, url=url)
@@ -131,32 +133,38 @@ def main():
         if not new_driver:
             logger.warning("Failed to load page after retries", page_number=page_number)
             empty_page_streak += 1
-            page_number += 1
-            driver.quit()
-            driver = setup_driver()
+            driver = restart_driver(driver)
             continue
 
         driver = new_driver
 
         try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "h3.dataset-heading a"))
+            )
             dataset_links = [
                 card.get_attribute("href")
                 for card in driver.find_elements(By.CSS_SELECTOR, "h3.dataset-heading a")
             ]
         except WebDriverException as e:
             logger.warning("Failed to collect dataset links after page load", error=str(e))
-            driver.quit()
-            driver = setup_driver()
+            driver = restart_driver(driver)
             empty_page_streak += 1
             page_number += 1
             continue
 
         if not dataset_links:
-            #no here should try again not continue and skip
-            logger.warning("No dataset links found", page_number=page_number)
-            empty_page_streak += 1
-            page_number += 1
-            continue
+            logger.warning("No dataset links found, retrying", page_number=page_number, retry=empty_page_retry + 1)
+            if empty_page_retry < MAX_RETRIES:
+                driver = restart_driver(driver)
+                empty_page_retry += 1
+                continue
+            else:
+                logger.warning("Max retries for empty page reached", page_number = page_number)
+                empty_page_streak +=1
+                page_number += 1
+                empty_page_retry = 0
+                continue
 
         new_links = [link for link in dataset_links if link not in scraped_urls]
         if not new_links:
