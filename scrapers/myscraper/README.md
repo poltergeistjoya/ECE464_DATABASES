@@ -21,9 +21,8 @@ caffeinate -dims uv run main2.py
 | publisher         | CSS Selector     | `[title='publisher']`                                                  |
 | ~date_created~    | ~CSS Selector~   | ~`span[itemprop='dateModified'] a`~                                    |
 | date_last_updated | XPath            | `//th[normalize-space(text())='{label_text}']/following-sibling::td`   |
-
-**Note**:  
-XPath was necessary for `date_last_updated` because this field appeared inside an **HTML table**. The label (e.g., "Metadata Date") and its corresponding value were separated into different `<td>` cells. XPath allowed matching the label text first and then selecting the adjacent value, something CSS selectors alone can't do easily.
+ 
+XPath was necessary for `date_last_updated` because this field appeared inside an **HTML table**. The label (e.g., "Metadata Date") and its corresponding value were separated into different `<td>` cells. XPath allows for matching the label text first and then selecting the adjacent value, something CSS selectors alone can't do easily.
 
 # Data Scraping and Cleaning Notes
 - Scraped **2,052** pages out of approximately **15,000** pages.
@@ -35,57 +34,57 @@ XPath was necessary for `date_last_updated` because this field appeared inside a
 
 - All datasets without titles were dropped because the **title field was required** to be non-nullable.
 
-- **3 datasets had null dates**.
+- **3 datasets had null dates** These were also dropped.
   - Possible cause: script was manually canceled during writing, even though the fields were populated on the website.
   
 - **Mistake with date_created**:
-  - It was incorrectly scraped from the `dateModified` field via CSS.
-  - Correct approach would have been to use **XPath** targeting either the "Metadata Date" or "Reference Date(s)" fields.
-  - These fields were inconsistent across datasets, making initial publish dates hard to reliably extract.
+  - It was incorrectly scraped from the `dateModified` field via CSS, which essentially gave the same value as date_last_updated.
+  - A slightly more correct approach would have been to use **XPath** targeting either the "Metadata Date" or "Reference Date(s)" fields, but this would only show when the dataset was digitized. There are a number of datasets from the 60s and 70s, but it is rather difficult to find the original publishing date of the dataset from the government dataset page alone. (Would need to go down to the `Additional Metadata` table, click `show more` and then hope published is there (it is typically not referenced by the same field, or even present) 
 
-# Figures
+- **Formats and Tags cleaning**:
+  - The unique values found in the formats make it clear that there is no constraint on what the values of formats can be, [see format_counts.json](format_counts.json). This is after normalizing some of the formats, but there are just too many. Some of my favorites are when they just describe the data instead of the format:
+  - `"Acronyms CCA Community choice aggregation MWh Megawatt hour PPA Power purchase agreement RECs Renewable energy certificate": 1,`
+  - `"21 column data: Measured data with 95 % error bars given in first 10 columns (including three measurement types), Exponential Fits with 95% confidence bounds given in next 10 columns, and 3 dB point used to define bandwidth of each measurement given in the last column": 1,`
+ 
+  - Tags were normalized (standardizing slashes with spaces and splitting hyphens into spaces), to allow for ILIKE partial matches later.
+  - [Unique tag counts](tag_counts.json)
+    
+# Figures!
+Some fun figures visualizing the distribution of dataset publishers. Federal takes up the most space, but many federal datasets focus on smaller parts of the country, so these figures do not insinuate that we have many country wide datasets. In these scraped datasets, NOAA is the largest publisher, but this does not reflect the governments data actions as a whole since only about 13% of the datasets have been scraped (~43k/~317k). 
 
-### All Publishers
+### All Publishers: [fig/All_Publishers.png](fig/All_Publishers.png)
 ![All Publishers](fig/All_Publishers.png)
 
-### All Except Federal Publishers
+### All Except Federal Publishers: [fig/All_Except_Federal_Publishers.png](fig/All_Except_Federal_Publishers.png)
 ![All Except Federal Publishers](fig/All_Except_Federal_Publishers.png)
 
-### Publishers with Count ≥ 50
+### Publishers with Count ≥ 50: [fig/Publishers_with_Count_>_50.png](fig/Publishers_with_Count_>_50.png)
 ![Publishers with Count ≥ 50](fig/Publishers_with_Count_>_50.png)
 
-### Publishers with Count ≤ 50
+### Publishers with Count ≤ 50: [fig/Publishers_with_Count_≤_50.png](fig/Publishers_with_Count_≤_50.png)
 ![Publishers with Count ≤ 50](fig/Publishers_with_Count_≤_50.png)
 
-### Format Counts
-![Format Counts](fig/format_counts.png)
+### Format Counts: [format_counts.png](format_counts.png)
+![Format Counts](format_counts.png)
 
 
 # Query Summary
 
-The SQLAlchemy queries in this project focus on exploring patterns in dataset tags, formats, and publishers. The most notable and technically interesting components involve the **use of PostgreSQL array unnesting and `ILIKE`-based partial matching**, especially for querying dataset tags.
+The [queries](queries.py) ran on the scraped dataset mainly explore dataset tags, formats, and publishers. The most technically interesting queries involve the **use of PostgreSQL array unnesting and `ILIKE`-based partial matching**, especially for querying dataset tags. Note that unnesting the tags and searching through them is super slow, so a better way to do this is to make a tag lookup table. 
+
+Outputs of the queries can be found in [queries.md](queries.md) 
 
 ## Tags (Exact Match)
 
-The `search_datasets_by_tag` function performs an **exact match** against tags using PostgreSQL's `ANY` operator combined with `ILIKE`. This is efficient for finding datasets where one of the tags exactly matches a search term, regardless of case.
+The `search_datasets_by_tag` function performs an **exact match** against tags using PostgreSQL's `ANY` operator combined with `ILIKE`. 
 
 ## Tags (Partial Match)
 
 The `search_datasets_by_partial_tag` function is more flexible and powerful. It:
-- Unnests the `tags` array using `func.unnest`.
+- Unnests the `tags` array.
 - Applies `ILIKE` on each tag for **partial matching** (e.g., `'horse'` matches `'horsepower'`, `'horses'`, etc.).
 - Wraps this logic inside a subquery using `EXISTS`, which allows filtering datasets where **any** tag contains the given substring.
 
-This approach mimics the SQL:
-
-```sql
-SELECT * FROM datasets
-WHERE EXISTS (
-  SELECT 1 FROM unnest(tags) AS tag WHERE tag ILIKE '%horse%'
-)
-```
-
-and is implemented directly in SQLAlchemy for full ORM integration.
 
 ## Combined Search (Title or Tag)
 
@@ -93,16 +92,22 @@ The `search_datasets` function combines both:
 - Partial matching in the `title` using `ILIKE`.
 - Partial matching in the `tags` using the same unnest/EXISTS strategy.
 
-This allows broader search functionality and is useful for flexible dataset discovery interfaces.
+## Random Dataset
+
+But my favorite query is just getting a random dataset, because you can find a lot of interesting datasets that way.
+- [Chicago Public Schools - Middle School Attendance Boundaries SY2324](https://catalog.data.gov/dataset/chicago-public-schools-middle-school-attendance-boundaries-sy2324)
+- [USDA Rural Development Resale Properties - Real Estate Owned](https://catalog.data.gov/dataset/usda-rural-development-resale-properties-real-estate-owned)
+- [Sediment macrofaunal composition and sediment geochemistry of deep-sea coral habitats after the Deepwater Horizon oil spill in the Gulf of Mexico, 2010-2016](https://catalog.data.gov/dataset/sediment-macrofaunal-composition-and-sediment-geochemistry-of-deep-sea-coral-habitats-2010)
+- [HAQR Priority Green Infrastructure Zones](https://catalog.data.gov/dataset/haqr-priority-green-infrastructure-zones)
+- [Effects of Child Maltreatment, Cumulative Victimization Experiences, and Proximal Life Stress on Adult Outcomes of Substance Use, Mental Health Problems, and Antisocial Behavior, 2 Pennsylvania counties, 1976-2010](https://catalog.data.gov/dataset/effects-of-child-maltreatment-cumulative-victimization-experiences-and-proximal-life-1976--b842f)
+- [Bridge Areas (USACE IENC)](https://catalog.data.gov/dataset/bridge-areas-usace-ienc)
+
 
 ## Other Queries
 
 Other queries include:
-- Getting a random dataset.
 - Aggregating formats used fewer than N times.
-- Getting datasets by format with partial string matching (`ILIKE`).
 - Getting the top tags using `GROUP BY` and `COUNT`.
 
-These support exploratory analysis and tagging statistics.
 
 
